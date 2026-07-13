@@ -1,31 +1,66 @@
-A clean, modern, single-file React weather application that gives you real-time forecasts without dealing with API key setups.
+# 🌤️ WeatherNow - React Weather App
 
-Features
-No API Key Needed: Uses the completely free Open-Meteo API for both location searching and weather data.
+WeatherNow is a simple weather application built with **React**. It allows users to search for any city and view the current weather, hourly forecast, and a 7-day weather forecast. The app uses the free **Open-Meteo API**, so no API key is required.
 
-Smart Location Detection: Automatically asks for your location on launch. If denied, it defaults right to Mumbai, India.
+## Features
 
-Toggle Units: Switch between Celsius (°C) and Fahrenheit (°F) instantly.
+* Search weather by city name
+* View current temperature and weather condition
+* 24-hour weather forecast
+* 7-day weather forecast
+* Switch between Celsius (°C) and Fahrenheit (°F)
+* Shows humidity, wind speed, pressure, UV index, sunrise, and sunset
+* Uses your current location (if permission is allowed)
+* Responsive design for desktop and mobile
 
-Detailed Breakdown: Shows temperature, "feels like" temp, humidity, wind speeds/directions, UV index, and sunrise/sunset times.
+## Technologies Used
 
-Flexible Views: Switch between a 24-hour hourly scroll and a detailed 7-day forecast.
+* React.js
+* JavaScript (ES6)
+* HTML5
+* CSS3
+* Open-Meteo Weather API
+* Open-Meteo Geocoding API
 
-Built With
-Frontend: React 18 & Babel (Loaded via CDN)
+## Project Structure
 
-Styling: Vanilla CSS-in-JS (Flexbox, CSS Grid)
+```text
+WeatherNow/
+│── index.html
+└── README.md
+```
 
-Data Sources: Open-Meteo Geocoding & Weather Forecast APIs
+## How to Run
 
-How to Run It Locally
-Since everything is packaged in a single file, you don't need to run npm install or manage any node modules.
+1. Download or clone this repository.
+2. Open the project folder.
+3. Open `index.html` in your web browser.
+4. Allow location access or search for any city to view its weather.
 
-Clone this repository or download the HTML file.
+No installation or API key is needed.
 
-Open the file directly in any modern web browser (like Chrome, Brave, Safari, or Firefox).
+## What I Learned
 
-Start typing any city name in the search bar.
+While building this project, I learned:
 
-Project Structure
-index.html — The entire codebase. Contains the foundational HTML setup, the UI layout styling, the core API logic, and the React application structure all in one place for quick deployments.
+* React components and hooks
+* State management using `useState`
+* Fetching data from APIs
+* Handling asynchronous requests
+* Working with weather data
+* Creating a responsive user interface
+
+## Future Improvements
+
+* Add dark/light mode
+* Save favourite cities
+* Weather alerts
+* Air Quality Index (AQI)
+* Better weather animations
+* Gitub ---https://github.com/Pranjal06475/Weather-web-page
+
+## Author
+
+**Pranjal Rathore**
+
+If you like this project, feel free to ⭐ star the repository.
