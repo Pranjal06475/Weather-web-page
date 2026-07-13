@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeatherNow — React Weather App</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { min-height: 100vh; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// Open-Meteo API - completely free, no key needed
+const WMO_CODES = {
+  0: { label: 'Clear sky', icon: '☀️' },
+  1: { label: 'Mainly clear', icon: '🌤️' },
+  2: { label: 'Partly cloudy', icon: '⛅' },
+  3: { label: 'Overcast', icon: '☁️' },
+  45: { label: 'Foggy', icon: '🌫️' },
+  48: { label: 'Icy fog', icon: '🌫️' },
+  51: { label: 'Light drizzle', icon: '🌦️' },
+  53: { label: 'Drizzle', icon: '🌦️' },
+  55: { label: 'Heavy drizzle', icon: '🌧️' },
+  61: { label: 'Light rain', icon: '🌧️' },
+  63: { label: 'Rain', icon: '🌧️' },
+  65: { label: 'Heavy rain', icon: '🌧️' },
+  71: { label: 'Light snow', icon: '🌨️' },
+  73: { label: 'Snow', icon: '❄️' },
+  75: { label: 'Heavy snow', icon: '❄️' },
+  80: { label: 'Rain showers', icon: '🌦️' },
+  81: { label: 'Heavy showers', icon: '🌧️' },
+  95: { label: 'Thunderstorm', icon: '⛈️' },
+  99: { label: 'Heavy thunderstorm', icon: '⛈️' },
+};
+
+const getWmo = (code) => WMO_CODES[code] || { label: 'Unknown', icon: '🌡️' };
+
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function formatDay(dateStr) {
+  const d = new Date(dateStr);
+  return DAYS[d.getDay()];
+}
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+function formatTime(iso) {
+  const d = new Date(iso);
+  let h = d.getHours(), suffix = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h} ${suffix}`;
+}
+
+// Geocoding via Open-Meteo
+async function searchCity(query) {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return data.results || [];
+}
+
+async function fetchWeather(lat, lon) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure` +
+    `&hourly=temperature_2m,weather_code,precipitation_probability` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,uv_index_max,sunrise,sunset` +
+    `&timezone=auto&forecast_days=7`;
+  const res = await fetch(url);
+  return res.json();
+}
+
+// Styles
+const S = {
+  app: {
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+    padding: '0',
+  },
+  header: {
+    background: 'rgba(15,23,42,0.8)',
+    backdropFilter: 'blur(12px)',
+    borderBottom: '1px solid rgba(255,255,255,0.07)',
+    padding: '1rem 1.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '1rem',
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+  },
+  logo: { fontSize: '1.1rem', fontWeight: 600, color: '#38bdf8', letterSpacing: '-0.01em' },
+  searchWrap: { position: 'relative', flex: 1, maxWidth: 360 },
+  searchInput: {
+    width: '100%', padding: '0.55rem 1rem 0.55rem 2.5rem',
+    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 8, color: '#f1f5f9', fontSize: 14, outline: 'none',
+  },
+  searchIcon: { position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#64748b' },
+  dropdown: {
+    position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+    background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 10, overflow: 'hidden', zIndex: 100,
+    boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+  },
+  dropItem: {
+    padding: '0.65rem 1rem', cursor: 'pointer', fontSize: 13,
+    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    display: 'flex', flexDirection: 'column', gap: 2,
+  },
+  main: { maxWidth: 960, margin: '0 auto', padding: '1.5rem 1rem 3rem' },
+  heroCard: {
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 20, padding: '2rem', marginBottom: '1.25rem',
+    display: 'grid', gridTemplateColumns: '1fr auto', gap: '1rem', alignItems: 'center',
+  },
+  city: { fontSize: 'clamp(1.5rem, 4vw, 2.2rem)', fontWeight: 700, marginBottom: 4 },
+  date: { fontSize: 13, color: '#94a3b8', marginBottom: '1rem' },
+  bigTemp: { fontSize: 'clamp(3rem, 8vw, 5rem)', fontWeight: 300, lineHeight: 1, marginBottom: 4 },
+  condition: { fontSize: 15, color: '#94a3b8' },
+  feelsLike: { fontSize: 13, color: '#64748b', marginTop: 4 },
+  heroIcon: { fontSize: 'clamp(4rem, 10vw, 7rem)', lineHeight: 1 },
+  statsGrid: {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+    gap: '0.75rem', marginBottom: '1.25rem',
+  },
+  statCard: {
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+    borderRadius: 14, padding: '1rem',
+  },
+  statLabel: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 },
+  statValue: { fontSize: 20, fontWeight: 600, marginBottom: 2 },
+  statSub: { fontSize: 11, color: '#64748b' },
+  card: {
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+    borderRadius: 16, padding: '1.25rem', marginBottom: '1.25rem',
+  },
+  cardTitle: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem' },
+  hourlyScroll: { display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: 4 },
+  hourItem: {
+    flex: '0 0 auto', textAlign: 'center', background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '0.75rem 0.5rem',
+    minWidth: 60,
+  },
+  hourTime: { fontSize: 11, color: '#64748b', marginBottom: 4 },
+  hourIcon: { fontSize: 18, marginBottom: 4, display: 'block' },
+  hourTemp: { fontSize: 14, fontWeight: 600 },
+  hourPop: { fontSize: 10, color: '#38bdf8', marginTop: 3 },
+  dayRow: {
+    display: 'grid', gridTemplateColumns: '70px 1fr 80px 80px',
+    alignItems: 'center', gap: '0.5rem',
+    padding: '0.65rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)',
+  },
+  dayName: { fontSize: 14, fontWeight: 500 },
+  dayIcon: { fontSize: 18 },
+  dayHigh: { fontSize: 14, fontWeight: 600, textAlign: 'right' },
+  dayLow: { fontSize: 13, color: '#64748b', textAlign: 'right' },
+  loading: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    minHeight: '60vh', gap: '1rem', color: '#64748b',
+  },
+  spinner: {
+    width: 40, height: 40, border: '3px solid rgba(56,189,248,0.2)',
+    borderTop: '3px solid #38bdf8', borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+  },
+  error: {
+    textAlign: 'center', padding: '3rem 1rem', color: '#64748b',
+  },
+  unitBtn: {
+    background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+    color: '#94a3b8', borderRadius: 6, padding: '0.3rem 0.75rem',
+    cursor: 'pointer', fontSize: 13,
+  },
+  unitBtnActive: {
+    background: '#38bdf8', border: '1px solid #38bdf8',
+    color: '#0f172a', borderRadius: 6, padding: '0.3rem 0.75rem',
+    cursor: 'pointer', fontSize: 13, fontWeight: 600,
+  },
+  tabRow: { display: 'flex', gap: 4, marginBottom: '1.25rem' },
+};
+
+function WindDir({ deg }) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return <span>{dirs[Math.round(deg / 45) % 8]}</span>;
+}
+
+function UVLabel({ uv }) {
+  if (uv <= 2) return <span style={{color:'#4ade80'}}>Low</span>;
+  if (uv <= 5) return <span style={{color:'#facc15'}}>Moderate</span>;
+  if (uv <= 7) return <span style={{color:'#fb923c'}}>High</span>;
+  if (uv <= 10) return <span style={{color:'#f87171'}}>Very High</span>;
+  return <span style={{color:'#e879f9'}}>Extreme</span>;
+}
+
+function App() {
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [weather, setWeather] = useState(null);
+  const [location, setLocation] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [unit, setUnit] = useState('C');
+  const [tab, setTab] = useState('today');
+
+  const toF = (c) => Math.round(c * 9/5 + 32);
+  const temp = (c) => unit === 'C' ? `${Math.round(c)}°` : `${toF(c)}°`;
+
+  const load = useCallback(async (lat, lon, name, country) => {
+    setLoading(true); setError('');
+    try {
+      const data = await fetchWeather(lat, lon);
+      setWeather(data);
+      setLocation({ name, country, lat, lon });
+    } catch(e) {
+      setError('Could not load weather. Check your connection.');
+    } finally { setLoading(false); }
+  }, []);
+
+  // Default: try geolocation, else Mumbai
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude: lat, longitude: lon } = pos.coords;
+          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=&count=1&latitude=${lat}&longitude=${lon}&language=en&format=json`).catch(()=>null);
+          load(lat, lon, 'Your Location', '');
+        },
+        () => load(19.076, 72.877, 'Mumbai', 'India')
+      );
+    } else {
+      load(19.076, 72.877, 'Mumbai', 'India');
+    }
+  }, [load]);
+
+  // Search suggestions
+  useEffect(() => {
+    if (query.length < 2) { setSuggestions([]); return; }
+    const t = setTimeout(async () => {
+      const results = await searchCity(query).catch(() => []);
+      setSuggestions(results);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const pick = (s) => {
+    setSuggestions([]);
+    setQuery('');
+    load(s.latitude, s.longitude, s.name, s.country || '');
+  };
+
+  const now = weather ? new Date() : null;
+  const todayStr = now ? `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}` : '';
+
+  // Next 24 hours from current hour
+  const hourlySlice = weather ? (() => {
+    const nowIso = new Date().toISOString().slice(0, 13);
+    const idx = weather.hourly.time.findIndex(t => t.startsWith(nowIso));
+    const start = idx >= 0 ? idx : 0;
+    return Array.from({length: 24}, (_, i) => ({
+      time: weather.hourly.time[start + i],
+      temp: weather.hourly.temperature_2m[start + i],
+      code: weather.hourly.weather_code[start + i],
+      pop: weather.hourly.precipitation_probability[start + i],
+    })).filter(h => h.time);
+  })() : [];
+
+  return (
+    <div style={S.app}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        input::placeholder { color: #475569; }
+        input:focus { border-color: rgba(56,189,248,0.5) !important; outline: none; }
+        ::-webkit-scrollbar { height: 4px; width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        button:hover { opacity: 0.85; }
+      `}</style>
+
+      {/* Header */}
+      <header style={S.header}>
+        <span style={S.logo}>⛅ WeatherNow</span>
+        <div style={S.searchWrap}>
+          <span style={S.searchIcon}>🔍</span>
+          <input
+            style={S.searchInput}
+            placeholder="Search city..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Escape' && setSuggestions([])}
+          />
+          {suggestions.length > 0 && (
+            <div style={S.dropdown}>
+              {suggestions.map((s, i) => (
+                <div
+                  key={i}
+                  style={S.dropItem}
+                  onClick={() => pick(s)}
+                  onMouseOver={e => e.currentTarget.style.background='rgba(255,255,255,0.06)'}
+                  onMouseOut={e => e.currentTarget.style.background=''}
+                >
+                  <span style={{fontWeight:500, fontSize:14}}>{s.name}</span>
+                  <span style={{color:'#64748b', fontSize:12}}>{[s.admin1, s.country].filter(Boolean).join(', ')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{display:'flex', gap:4}}>
+          <button style={unit==='C'?S.unitBtnActive:S.unitBtn} onClick={()=>setUnit('C')}>°C</button>
+          <button style={unit==='F'?S.unitBtnActive:S.unitBtn} onClick={()=>setUnit('F')}>°F</button>
+        </div>
+      </header>
+
+      <main style={S.main}>
+        {loading && (
+          <div style={S.loading}>
+            <div style={S.spinner}></div>
+            <span>Loading weather...</span>
+          </div>
+        )}
+
+        {error && !loading && (
+          <div style={S.error}>
+            <div style={{fontSize:48, marginBottom:'1rem'}}>😕</div>
+            <p style={{fontSize:16, color:'#f1f5f9'}}>{error}</p>
+          </div>
+        )}
+
+        {!loading && weather && location && (
+          <>
+            {/* Hero */}
+            <div style={S.heroCard}>
+              <div>
+                <div style={S.city}>{location.name}{location.country ? `, ${location.country}` : ''}</div>
+                <div style={S.date}>{todayStr}</div>
+                <div style={S.bigTemp}>{temp(weather.current.temperature_2m)}{unit}</div>
+                <div style={S.condition}>{getWmo(weather.current.weather_code).label}</div>
+                <div style={S.feelsLike}>Feels like {temp(weather.current.apparent_temperature)}{unit}</div>
+              </div>
+              <div style={S.heroIcon}>{getWmo(weather.current.weather_code).icon}</div>
+            </div>
+
+            {/* Stats */}
+            <div style={S.statsGrid}>
+              {[
+                { label: 'Humidity', value: `${weather.current.relative_humidity_2m}%`, sub: 'Relative humidity' },
+                { label: 'Wind', value: `${Math.round(weather.current.wind_speed_10m)} km/h`, sub: <WindDir deg={weather.current.wind_direction_10m} /> },
+                { label: 'UV Index', value: weather.current.uv_index, sub: <UVLabel uv={weather.current.uv_index} /> },
+                { label: 'Pressure', value: `${Math.round(weather.current.surface_pressure)}`, sub: 'hPa' },
+                { label: 'Sunrise', value: weather.daily.sunrise[0].slice(11, 16), sub: 'Local time' },
+                { label: 'Sunset', value: weather.daily.sunset[0].slice(11, 16), sub: 'Local time' },
+              ].map(s => (
+                <div key={s.label} style={S.statCard}>
+                  <div style={S.statLabel}>{s.label}</div>
+                  <div style={S.statValue}>{s.value}</div>
+                  <div style={S.statSub}>{s.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabs */}
+            <div style={S.tabRow}>
+              {['today','forecast'].map(t => (
+                <button
+                  key={t}
+                  style={tab===t ? {...S.unitBtnActive, borderRadius:8, padding:'0.4rem 1rem'} : {...S.unitBtn, borderRadius:8, padding:'0.4rem 1rem'}}
+                  onClick={()=>setTab(t)}
+                >
+                  {t === 'today' ? 'Hourly today' : '7-day forecast'}
+                </button>
+              ))}
+            </div>
+
+            {/* Hourly */}
+            {tab === 'today' && (
+              <div style={S.card}>
+                <div style={S.cardTitle}>Next 24 hours</div>
+                <div style={S.hourlyScroll}>
+                  {hourlySlice.map((h, i) => (
+                    <div key={i} style={{...S.hourItem, ...(i===0 ? {borderColor:'rgba(56,189,248,0.4)'} : {})}}>
+                      <div style={S.hourTime}>{i===0 ? 'Now' : formatTime(h.time)}</div>
+                      <span style={S.hourIcon}>{getWmo(h.code).icon}</span>
+                      <div style={S.hourTemp}>{temp(h.temp)}{unit}</div>
+                      {h.pop > 0 && <div style={S.hourPop}>💧{h.pop}%</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Forecast */}
+            {tab === 'forecast' && (
+              <div style={S.card}>
+                <div style={S.cardTitle}>7-day forecast</div>
+                {weather.daily.time.map((d, i) => (
+                  <div key={i} style={{...S.dayRow, ...(i===weather.daily.time.length-1 ? {borderBottom:'none'} : {})}}>
+                    <div>
+                      <div style={S.dayName}>{i===0 ? 'Today' : formatDay(d)}</div>
+                      <div style={{fontSize:11, color:'#64748b'}}>{formatDate(d)}</div>
+                    </div>
+                    <div style={{display:'flex', alignItems:'center', gap:8}}>
+                      <span style={S.dayIcon}>{getWmo(weather.daily.weather_code[i]).icon}</span>
+                      <span style={{fontSize:12, color:'#64748b'}}>{getWmo(weather.daily.weather_code[i]).label}</span>
+                      {weather.daily.precipitation_probability_max[i] > 20 && (
+                        <span style={{fontSize:11, color:'#38bdf8'}}>💧{weather.daily.precipitation_probability_max[i]}%</span>
+                      )}
+                    </div>
+                    <div style={S.dayHigh}>{temp(weather.daily.temperature_2m_max[i])}</div>
+                    <div style={S.dayLow}>{temp(weather.daily.temperature_2m_min[i])}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
